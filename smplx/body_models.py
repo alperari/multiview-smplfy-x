@@ -272,6 +272,8 @@ class SMPL(nn.Module):
 
         # The shape components
         shapedirs = data_struct.shapedirs
+        if shapedirs.shape[-1] > self.NUM_BETAS:
+            shapedirs = shapedirs[:, :, :self.NUM_BETAS]
         # The shape components
         self.register_buffer(
             'shapedirs',

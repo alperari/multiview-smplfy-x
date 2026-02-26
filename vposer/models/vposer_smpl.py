@@ -29,7 +29,9 @@ A human body pose prior built with Auto-Encoding Variational Bayes
 
 __all__ = ['VPoser']
 
-import os, sys, shutil
+import os
+import sys
+import shutil
 
 import torch
 
@@ -38,7 +40,17 @@ from torch.nn import functional as F
 
 import numpy as np
 
-import torchgeometry as tgm
+try:
+    from pytorch3d.transforms.rotation_conversions import (
+        matrix_to_axis_angle,
+        axis_angle_to_matrix,
+    )
+except ImportError:
+    from pytorch3d.transforms import (
+        matrix_to_axis_angle,
+        axis_angle_to_matrix,
+    )
+
 
 class ContinousRotReprDecoder(nn.Module):
     def __init__(self):
@@ -80,7 +92,7 @@ class VPoser(nn.Module):
         if self.use_cont_repr:
             self.rot_decoder = ContinousRotReprDecoder()
 
-        self.bodyprior_dec_out = nn.Linear(num_neurons, self.num_joints* 6)
+        self.bodyprior_dec_out = nn.Linear(num_neurons, self.num_joints * 6)
 
     def encode(self, Pin):
         '''
@@ -111,7 +123,8 @@ class VPoser(nn.Module):
             Xout = torch.tanh(Xout)
 
         Xout = Xout.view([-1, 1, self.num_joints, 9])
-        if output_type == 'aa': return VPoser.matrot2aa(Xout)
+        if output_type == 'aa':
+            return VPoser.matrot2aa(Xout)
         return Xout
 
     def forward(self, Pin, input_type='matrot', output_type='matrot'):
@@ -127,10 +140,11 @@ class VPoser(nn.Module):
         q_z = self.encode(Pin)
         q_z_sample = q_z.rsample()
         Prec = self.decode(q_z_sample)
-        if output_type == 'aa': Prec = VPoser.matrot2aa(Prec)
+        if output_type == 'aa':
+            Prec = VPoser.matrot2aa(Prec)
 
-        #return Prec, q_z.mean, q_z.sigma
-        return {'pose':Prec, 'mean':q_z.mean, 'std':q_z.scale}
+        # return Prec, q_z.mean, q_z.sigma
+        return {'pose': Prec, 'mean': q_z.mean, 'std': q_z.scale}
 
     def sample_poses(self, num_poses, output_type='aa', seed=None):
         np.random.seed(seed)
@@ -138,7 +152,8 @@ class VPoser(nn.Module):
         device = self.bodyprior_dec_fc1.weight.device
         self.eval()
         with torch.no_grad():
-            Zgen = torch.tensor(np.random.normal(0., 1., size=(num_poses, self.latentD)), dtype=dtype).to(device)
+            Zgen = torch.tensor(np.random.normal(0., 1., size=(
+                num_poses, self.latentD)), dtype=dtype).to(device)
         return self.decode(Zgen, output_type=output_type)
 
     @staticmethod
@@ -148,8 +163,8 @@ class VPoser(nn.Module):
         :return: Nx1xnum_jointsx3
         '''
         batch_size = pose_matrot.size(0)
-        homogen_matrot = F.pad(pose_matrot.view(-1, 3, 3), [0,1])
-        pose = tgm.rotation_matrix_to_angle_axis(homogen_matrot).view(batch_size, 1, -1, 3).contiguous()
+        pose = matrix_to_axis_angle(
+            pose_matrot.view(-1, 3, 3)).view(batch_size, 1, -1, 3).contiguous()
         return pose
 
     @staticmethod
@@ -159,6 +174,6 @@ class VPoser(nn.Module):
         :return: pose_matrot: Nx1xnum_jointsx9
         '''
         batch_size = pose.size(0)
-        pose_body_matrot = tgm.angle_axis_to_rotation_matrix(pose.reshape(-1, 3))[:, :3, :3].contiguous().view(batch_size, 1, -1, 9)
+        pose_body_matrot = axis_angle_to_matrix(
+            pose.reshape(-1, 3))[:, :3, :3].contiguous().view(batch_size, 1, -1, 9)
         return pose_body_matrot
-

@@ -44,6 +44,9 @@ Keypoints.__new__.__defaults__ = (None,) * len(Keypoints._fields)
 
 
 def create_dataset(dataset='openpose', data_folder='data', **kwargs):
+    input_mode = kwargs.get('input_mode', 'openpose').lower()
+    if input_mode == 'raw_images':
+        return RawImages(data_folder, **kwargs)
     if dataset.lower() == 'openpose':
         return OpenPose(data_folder, **kwargs)
     else:
@@ -198,6 +201,104 @@ class OpenPose(Dataset):
         img_path = self.img_paths[idx]
         return self.read_item(img_path)
 
+
+class RawImages(Dataset):
+
+    NUM_BODY_JOINTS = 25
+    NUM_HAND_JOINTS = 20
+
+    def __init__(self, data_folder,
+                 raw_images_dir='',
+                 img_folder='color',
+                 use_hands=False,
+                 use_face=False,
+                 dtype=torch.float32,
+                 model_type='smplx',
+                 joints_to_ign=None,
+                 use_face_contour=False,
+                 openpose_format='coco25',
+                 **kwargs):
+        super(RawImages, self).__init__()
+
+        self.use_hands = use_hands
+        self.use_face = use_face
+        self.model_type = model_type
+        self.dtype = dtype
+        self.joints_to_ign = joints_to_ign
+        self.use_face_contour = use_face_contour
+        self.openpose_format = openpose_format
+
+        self.num_joints = (self.NUM_BODY_JOINTS +
+                           2 * self.NUM_HAND_JOINTS * use_hands)
+
+        if raw_images_dir:
+            raw_images_dir = osp.expandvars(raw_images_dir)
+            if not osp.isabs(raw_images_dir):
+                raw_images_dir = osp.join(data_folder, raw_images_dir)
+            self.img_folder = raw_images_dir
+        else:
+            self.img_folder = osp.join(data_folder, img_folder)
+
+        if not osp.exists(self.img_folder):
+            raise ValueError('Raw images folder does not exist: {}'.format(
+                self.img_folder))
+
+        valid_exts = ('.png', '.jpg', '.jpeg', '.bmp', '.webp')
+        self.img_paths = [osp.join(self.img_folder, img_fn)
+                          for img_fn in os.listdir(self.img_folder)
+                          if (img_fn.lower().endswith(valid_exts) and
+                              not img_fn.startswith('.'))]
+        self.img_paths = sorted(self.img_paths)
+        self.cnt = 0
+
+    def get_model2data(self):
+        return smpl_to_openpose(self.model_type, use_hands=self.use_hands,
+                                use_face=self.use_face,
+                                use_face_contour=self.use_face_contour,
+                                openpose_format=self.openpose_format)
+
+    def get_joint_weights(self):
+        optim_weights = np.ones(self.num_joints + 2 * self.use_hands +
+                                self.use_face * 51 +
+                                17 * self.use_face_contour,
+                                dtype=np.float32)
+        if self.joints_to_ign is not None and -1 not in self.joints_to_ign:
+            optim_weights[self.joints_to_ign] = 0.
+        return torch.tensor(optim_weights, dtype=self.dtype)
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
+        img_path = self.img_paths[idx]
+        return self.read_item(img_path)
+
+    def read_item(self, img_path):
+        img = cv2.imread(img_path).astype(np.float32)[:, :, :] / 255.0
+        img_fn = osp.splitext(osp.basename(img_path))[0]
+
+        output_dict = {
+            'fn': img_fn,
+            'img_path': img_path,
+            'img': img,
+        }
+        return output_dict
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return self.next()
+
+    def next(self):
+        if self.cnt >= len(self.img_paths):
+            raise StopIteration
+
+        img_path = self.img_paths[self.cnt]
+        self.cnt += 1
+
+        return self.read_item(img_path)
+
     def read_item(self, img_path):
         # read images
         img = cv2.imread(img_path).astype(np.float32)[:, :, :] / 255.0
@@ -217,7 +318,7 @@ class OpenPose(Dataset):
 
         output_dict = {'fn': img_fn,
                        'img_path': img_path,
-                       'keypoints': keypoints, 
+                       'keypoints': keypoints,
                        'img': img}
         if keyp_tuple.gender_gt is not None:
             if len(keyp_tuple.gender_gt) > 0:
@@ -225,7 +326,7 @@ class OpenPose(Dataset):
         if keyp_tuple.gender_pd is not None:
             if len(keyp_tuple.gender_pd) > 0:
                 output_dict['gender_pd'] = keyp_tuple.gender_pd
-        
+
         # read camera
         cam_id = int(img_fn)
         cam_data = sio.loadmat(self.cam_fpath)['cam'][0]

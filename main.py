@@ -85,6 +85,13 @@ def main(**args):
     img_folder = args.pop('img_folder', 'images')
     dataset_obj = create_dataset(img_folder=img_folder, **args)
 
+    input_mode = args.get('input_mode', 'openpose').lower()
+    if input_mode == 'raw_images':
+        raise NotImplementedError(
+            'input_mode=raw_images currently loads images only (Phase 2). '
+            'Please run keypoint extraction and camera estimation first, '
+            'then provide those outputs for fitting.')
+
     start = time.time()
 
     input_gender = args.pop('gender', 'neutral')
@@ -121,7 +128,6 @@ def main(**args):
     if args.get('model_type') != 'smplh':
         neutral_model = smplx.create(gender='neutral', **model_params)
     female_model = smplx.create(gender='female', **model_params)
-
 
     use_hands = args.get('use_hands', True)
     use_face = args.get('use_face', True)
@@ -221,7 +227,8 @@ def main(**args):
 
         camera.focal_length_x = torch.full([1], cam_fx)
         camera.focal_length_y = torch.full([1], cam_fy)
-        camera.center = torch.tensor([cam_cx, cam_cy], dtype=dtype).unsqueeze(0)
+        camera.center = torch.tensor(
+            [cam_cx, cam_cy], dtype=dtype).unsqueeze(0)
         camera.rotation.data = torch.from_numpy(cam_R).unsqueeze(0)
         camera.translation.data = torch.from_numpy(cam_t).unsqueeze(0)
         camera.rotation.requires_grad = False

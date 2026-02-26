@@ -66,6 +66,13 @@ def parse_config(argv=None):
                         help='Use CUDA for the computations')
     parser.add_argument('--dataset', default='hands_cmu_gt', type=str,
                         help='The name of the dataset that will be used')
+    parser.add_argument('--input_mode', default='openpose', type=str,
+                        choices=['openpose', 'raw_images'],
+                        help='Input mode: openpose expects keypoints+camera metadata, '
+                        'raw_images loads only images for preprocessing pipeline')
+    parser.add_argument('--raw_images_dir', default='', type=str,
+                        help='Directory of raw multi-view images. If relative, it is '
+                        'resolved under data_folder')
     parser.add_argument('--joints_to_ign', default=-1, type=int,
                         nargs='*',
                         help='Indices of joints to be ignored')

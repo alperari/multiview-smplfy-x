@@ -36,6 +36,7 @@ from utils import JointMapper
 from cmd_parser import parse_config
 from data_parser import create_dataset
 from fit_single_frame import fit_single_frame
+from keypoint_extractor import extract_keypoints_from_folder
 
 from camera import create_camera
 from prior import create_prior
@@ -87,10 +88,32 @@ def main(**args):
 
     input_mode = args.get('input_mode', 'openpose').lower()
     if input_mode == 'raw_images':
+        if args.get('auto_extract_keypoints', True):
+            keypoint_output_folder = args.get('keypoint_output_folder', '')
+            if keypoint_output_folder:
+                keypoint_output_folder = osp.expandvars(keypoint_output_folder)
+                if not osp.isabs(keypoint_output_folder):
+                    keypoint_output_folder = osp.join(args.get('data_folder', '.'),
+                                                      keypoint_output_folder)
+            else:
+                keypoint_output_folder = osp.join(args.get('data_folder', '.'),
+                                                  args.get('keyp_folder', 'keypoints'))
+
+            print('Running automatic keypoint extraction...')
+            stats = extract_keypoints_from_folder(
+                image_folder=dataset_obj.img_folder,
+                output_folder=keypoint_output_folder,
+                backend=args.get('keypoint_backend', 'mediapipe'),
+                overwrite=args.get('overwrite_keypoints', False),
+                min_detection_confidence=args.get('kp_min_detection_conf', 0.5),
+                min_tracking_confidence=args.get('kp_min_tracking_conf', 0.5),
+            )
+            print('Keypoint extraction done: {}'.format(stats))
+
         raise NotImplementedError(
-            'input_mode=raw_images currently loads images only (Phase 2). '
-            'Please run keypoint extraction and camera estimation first, '
-            'then provide those outputs for fitting.')
+            'input_mode=raw_images now supports automatic keypoint extraction '
+            '(Phase 3), but camera estimation is still required before fitting. '
+            'Please run camera estimation next (Phase 4).')
 
     start = time.time()
 

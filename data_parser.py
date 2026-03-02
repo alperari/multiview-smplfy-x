@@ -201,6 +201,68 @@ class OpenPose(Dataset):
         img_path = self.img_paths[idx]
         return self.read_item(img_path)
 
+    def read_item(self, img_path):
+        # read images
+        img = cv2.imread(img_path).astype(np.float32)[:, :, :] / 255.0
+        img_fn = osp.split(img_path)[1]
+        img_fn, _ = osp.splitext(osp.split(img_path)[1])
+
+        # read key points
+        keypoint_fn = osp.join(self.keyp_folder,
+                               img_fn + '_keypoints.json')
+        keyp_tuple = read_keypoints(keypoint_fn, use_hands=self.use_hands,
+                                    use_face=self.use_face,
+                                    use_face_contour=self.use_face_contour)
+
+        if len(keyp_tuple.keypoints) < 1:
+            return {}
+        keypoints = np.stack(keyp_tuple.keypoints)
+
+        output_dict = {'fn': img_fn,
+                       'img_path': img_path,
+                       'keypoints': keypoints,
+                       'img': img}
+        if keyp_tuple.gender_gt is not None:
+            if len(keyp_tuple.gender_gt) > 0:
+                output_dict['gender_gt'] = keyp_tuple.gender_gt
+        if keyp_tuple.gender_pd is not None:
+            if len(keyp_tuple.gender_pd) > 0:
+                output_dict['gender_pd'] = keyp_tuple.gender_pd
+
+        # read camera
+        cam_id = int(img_fn)
+        cam_data = sio.loadmat(self.cam_fpath)['cam'][0]
+        cam_param = cam_data[cam_id]
+        cam_R, cam_t = generate_cam_Rt(
+            center=cam_param['center'][0, 0], right=cam_param['right'][0, 0],
+            up=cam_param['up'][0, 0], direction=cam_param['direction'][0, 0])
+        cam_R = cam_R.astype(np.float32)
+        cam_t = cam_t.astype(np.float32)
+        output_dict['cam_id'] = cam_id
+        output_dict['cam_R'] = np.float32(cam_R)
+        output_dict['cam_t'] = np.float32(cam_t)
+        output_dict['cam_fx'] = 5000.0
+        output_dict['cam_fy'] = 5000.0
+        output_dict['cam_cx'] = img.shape[1] / 2
+        output_dict['cam_cy'] = img.shape[0] / 2
+
+        return output_dict
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return self.next()
+
+    def next(self):
+        if self.cnt >= len(self.img_paths):
+            raise StopIteration
+
+        img_path = self.img_paths[self.cnt]
+        self.cnt += 1
+
+        return self.read_item(img_path)
+
 
 class RawImages(Dataset):
 
@@ -282,71 +344,6 @@ class RawImages(Dataset):
             'img_path': img_path,
             'img': img,
         }
-        return output_dict
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        return self.next()
-
-    def next(self):
-        if self.cnt >= len(self.img_paths):
-            raise StopIteration
-
-        img_path = self.img_paths[self.cnt]
-        self.cnt += 1
-
-        return self.read_item(img_path)
-
-    def read_item(self, img_path):
-        # read images
-        img = cv2.imread(img_path).astype(np.float32)[:, :, :] / 255.0
-        img_fn = osp.split(img_path)[1]
-        img_fn, _ = osp.splitext(osp.split(img_path)[1])
-
-        # read key points
-        keypoint_fn = osp.join(self.keyp_folder,
-                               img_fn + '_keypoints.json')
-        keyp_tuple = read_keypoints(keypoint_fn, use_hands=self.use_hands,
-                                    use_face=self.use_face,
-                                    use_face_contour=self.use_face_contour)
-
-        if len(keyp_tuple.keypoints) < 1:
-            return {}
-        keypoints = np.stack(keyp_tuple.keypoints)
-
-        output_dict = {'fn': img_fn,
-                       'img_path': img_path,
-                       'keypoints': keypoints,
-                       'img': img}
-        if keyp_tuple.gender_gt is not None:
-            if len(keyp_tuple.gender_gt) > 0:
-                output_dict['gender_gt'] = keyp_tuple.gender_gt
-        if keyp_tuple.gender_pd is not None:
-            if len(keyp_tuple.gender_pd) > 0:
-                output_dict['gender_pd'] = keyp_tuple.gender_pd
-
-        # read camera
-        cam_id = int(img_fn)
-        cam_data = sio.loadmat(self.cam_fpath)['cam'][0]
-        cam_param = cam_data[cam_id]
-        cam_R, cam_t = generate_cam_Rt(
-            center=cam_param['center'][0, 0], right=cam_param['right'][0, 0],
-            up=cam_param['up'][0, 0], direction=cam_param['direction'][0, 0])
-        cam_R = cam_R.astype(np.float32)
-        cam_t = cam_t.astype(np.float32)
-        # cam_r = np.float32(cam_data['cam_rs'][cam_id])
-        # cam_t = np.float32(cam_data['cam_ts'][cam_id])
-        # cam_R = cv2.Rodrigues(cam_r)[0]
-        output_dict['cam_id'] = cam_id
-        output_dict['cam_R'] = np.float32(cam_R)
-        output_dict['cam_t'] = np.float32(cam_t)
-        output_dict['cam_fx'] = 5000.0
-        output_dict['cam_fy'] = 5000.0
-        output_dict['cam_cx'] = img.shape[1] / 2
-        output_dict['cam_cy'] = img.shape[0] / 2
-
         return output_dict
 
     def __iter__(self):

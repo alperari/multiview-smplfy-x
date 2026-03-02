@@ -73,6 +73,23 @@ def parse_config(argv=None):
     parser.add_argument('--raw_images_dir', default='', type=str,
                         help='Directory of raw multi-view images. If relative, it is '
                         'resolved under data_folder')
+    parser.add_argument('--auto_extract_keypoints', default=True,
+                        type=lambda x: x.lower() in ['true', '1'],
+                        help='When input_mode=raw_images, automatically extract 2D '
+                        'keypoints for each image')
+    parser.add_argument('--keypoint_backend', default='mediapipe', type=str,
+                        choices=['mediapipe'],
+                        help='Backend used for automatic keypoint extraction')
+    parser.add_argument('--keypoint_output_folder', default='', type=str,
+                        help='Output folder for extracted keypoints JSON. If empty, '
+                        'defaults to data_folder/keyp_folder')
+    parser.add_argument('--overwrite_keypoints', default=False,
+                        type=lambda x: x.lower() in ['true', '1'],
+                        help='Overwrite existing keypoint JSON files when extracting')
+    parser.add_argument('--kp_min_detection_conf', default=0.5, type=float,
+                        help='Minimum detector confidence used by keypoint backend')
+    parser.add_argument('--kp_min_tracking_conf', default=0.5, type=float,
+                        help='Minimum tracking confidence used by keypoint backend')
     parser.add_argument('--joints_to_ign', default=-1, type=int,
                         nargs='*',
                         help='Indices of joints to be ignored')

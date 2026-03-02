@@ -10,6 +10,7 @@ import os.path as osp
 import shutil
 import subprocess
 
+import cv2
 import numpy as np
 
 
@@ -114,6 +115,7 @@ def _parse_images_txt(path, cameras):
             'name': name,
             'cam_R': rot.tolist(),
             'cam_t': trans.tolist(),
+            'cam_confidence': 1.0,
             'cam_fx': fx,
             'cam_fy': fy,
             'cam_cx': cx,
@@ -157,6 +159,154 @@ def _pick_best_sparse_model(sparse_root):
     return best, best_count
 
 
+def _list_images(image_folder):
+    valid_exts = ('.png', '.jpg', '.jpeg', '.bmp', '.webp')
+    image_paths = [osp.join(image_folder, fn)
+                   for fn in os.listdir(image_folder)
+                   if fn.lower().endswith(valid_exts)]
+    return sorted(image_paths)
+
+
+def _estimate_sparse_pairwise(image_folder,
+                              min_inliers=20,
+                              max_features=8000):
+    image_paths = _list_images(image_folder)
+    if len(image_paths) < 2:
+        raise RuntimeError('Sparse fallback needs at least 2 images, got {}'.format(
+            len(image_paths)))
+
+    gray_images = []
+    stems = []
+    for p in image_paths:
+        img = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            continue
+        gray_images.append(img)
+        stems.append(osp.splitext(osp.basename(p))[0])
+
+    if len(gray_images) < 2:
+        raise RuntimeError(
+            'Sparse fallback failed: could not read enough images')
+
+    height, width = gray_images[0].shape[:2]
+    fx = float(1.2 * max(width, height))
+    fy = fx
+    cx = float(width / 2.0)
+    cy = float(height / 2.0)
+
+    orb = cv2.ORB_create(nfeatures=int(max_features))
+    matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+
+    keypoints = []
+    descriptors = []
+    for img in gray_images:
+        kp, des = orb.detectAndCompute(img, None)
+        keypoints.append(kp)
+        descriptors.append(des)
+
+    def estimate_relative_pose(src_idx, dst_idx):
+        des_src = descriptors[src_idx]
+        des_dst = descriptors[dst_idx]
+        if des_src is None or des_dst is None:
+            return None
+
+        knn = matcher.knnMatch(des_src, des_dst, k=2)
+        good = []
+        for pair in knn:
+            if len(pair) < 2:
+                continue
+            m, n = pair
+            if m.distance < 0.75 * n.distance:
+                good.append(m)
+
+        if len(good) < 8:
+            return None
+
+        pts_src = np.float32([keypoints[src_idx][m.queryIdx].pt for m in good])
+        pts_dst = np.float32([keypoints[dst_idx][m.trainIdx].pt for m in good])
+
+        E, _ = cv2.findEssentialMat(
+            pts_src, pts_dst,
+            focal=fx, pp=(cx, cy),
+            method=cv2.RANSAC,
+            prob=0.999,
+            threshold=1.5)
+        if E is None:
+            return None
+
+        if E.ndim == 2 and E.shape == (3, 3):
+            E_use = E
+        else:
+            E_use = E[:3, :3]
+
+        _, R, t, pose_mask = cv2.recoverPose(E_use, pts_src, pts_dst,
+                                             focal=fx, pp=(cx, cy))
+        inliers = int((pose_mask > 0).sum())
+        if inliers < int(min_inliers):
+            return None
+
+        return R.astype(np.float32), t.reshape(3).astype(np.float32), inliers
+
+    n = len(gray_images)
+    inlier_scores = np.zeros((n, n), dtype=np.int32)
+    rel_poses = {}
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            result = estimate_relative_pose(i, j)
+            if result is None:
+                continue
+            R, t, inliers = result
+            inlier_scores[i, j] = inliers
+            rel_poses[(i, j)] = (R, t, inliers)
+
+    seed_idx = int(np.argmax(inlier_scores.sum(axis=1)))
+
+    frames = {}
+    frames[stems[seed_idx]] = {
+        'image_id': seed_idx + 1,
+        'name': osp.basename(image_paths[seed_idx]),
+        'cam_R': np.eye(3, dtype=np.float32).tolist(),
+        'cam_t': np.zeros(3, dtype=np.float32).tolist(),
+        'cam_fx': fx,
+        'cam_fy': fy,
+        'cam_cx': cx,
+        'cam_cy': cy,
+        'width': width,
+        'height': height,
+    }
+
+    for j in range(n):
+        if j == seed_idx:
+            continue
+        if (seed_idx, j) not in rel_poses:
+            continue
+        R, t, inliers = rel_poses[(seed_idx, j)]
+        conf = float(inliers) / float(max(min_inliers, 1))
+        conf = float(min(1.0, max(0.0, conf)))
+        frames[stems[j]] = {
+            'image_id': j + 1,
+            'name': osp.basename(image_paths[j]),
+            'cam_R': R.tolist(),
+            'cam_t': t.tolist(),
+            'cam_confidence': conf,
+            'cam_fx': fx,
+            'cam_fy': fy,
+            'cam_cx': cx,
+            'cam_cy': cy,
+            'width': width,
+            'height': height,
+        }
+
+    if len(frames) < 2:
+        raise RuntimeError(
+            'Sparse fallback failed: could not estimate poses for enough views. '
+            'Try more images or stronger overlap.')
+
+    return frames, len(frames), seed_idx
+
+
 def estimate_cameras_from_folder(image_folder,
                                  output_path,
                                  backend='colmap',
@@ -165,7 +315,10 @@ def estimate_cameras_from_folder(image_folder,
                                  colmap_work_dir='',
                                  colmap_matcher='exhaustive',
                                  colmap_camera_model='SIMPLE_PINHOLE',
-                                 colmap_single_camera=True):
+                                 colmap_single_camera=True,
+                                 enable_sparse_fallback=True,
+                                 sparse_min_inliers=20,
+                                 sparse_max_features=8000):
     backend = backend.lower()
     if backend != 'colmap':
         raise ValueError('Unsupported camera backend: {}'.format(backend))
@@ -209,65 +362,101 @@ def estimate_cameras_from_folder(image_folder,
 
     os.makedirs(sparse_root, exist_ok=True)
 
-    _run_cmd([
-        colmap_binary,
-        'feature_extractor',
-        '--database_path', db_path,
-        '--image_path', image_folder,
-        '--ImageReader.camera_model', str(colmap_camera_model),
-        '--ImageReader.single_camera', '1' if colmap_single_camera else '0',
-    ])
-
-    if colmap_matcher == 'sequential':
+    try:
         _run_cmd([
             colmap_binary,
-            'sequential_matcher',
+            'feature_extractor',
             '--database_path', db_path,
+            '--image_path', image_folder,
+            '--ImageReader.camera_model', str(colmap_camera_model),
+            '--ImageReader.single_camera', '1' if colmap_single_camera else '0',
         ])
-    else:
+
+        if colmap_matcher == 'sequential':
+            _run_cmd([
+                colmap_binary,
+                'sequential_matcher',
+                '--database_path', db_path,
+            ])
+        else:
+            _run_cmd([
+                colmap_binary,
+                'exhaustive_matcher',
+                '--database_path', db_path,
+            ])
+
+        mapper_log = _run_cmd([
+            colmap_binary,
+            'mapper',
+            '--database_path', db_path,
+            '--image_path', image_folder,
+            '--output_path', sparse_root,
+        ])
+
+        if 'No good initial image pair found' in mapper_log:
+            raise RuntimeError(
+                'COLMAP mapper failed: no good initial image pair found.\n'
+                'This usually means insufficient overlap/texture between images.')
+
+        best_model_dir, num_registered = _pick_best_sparse_model(sparse_root)
+        os.makedirs(txt_root, exist_ok=True)
+
         _run_cmd([
             colmap_binary,
-            'exhaustive_matcher',
-            '--database_path', db_path,
+            'model_converter',
+            '--input_path', best_model_dir,
+            '--output_path', txt_root,
+            '--output_type', 'TXT',
         ])
 
-    _run_cmd([
-        colmap_binary,
-        'mapper',
-        '--database_path', db_path,
-        '--image_path', image_folder,
-        '--output_path', sparse_root,
-    ])
+        cameras_txt = osp.join(txt_root, 'cameras.txt')
+        images_txt = osp.join(txt_root, 'images.txt')
 
-    best_model_dir, num_registered = _pick_best_sparse_model(sparse_root)
-    os.makedirs(txt_root, exist_ok=True)
+        cameras = _parse_cameras_txt(cameras_txt)
+        frames = _parse_images_txt(images_txt, cameras)
 
-    _run_cmd([
-        colmap_binary,
-        'model_converter',
-        '--input_path', best_model_dir,
-        '--output_path', txt_root,
-        '--output_type', 'TXT',
-    ])
+        out = {
+            'backend': 'colmap',
+            'image_folder': image_folder,
+            'frames': frames,
+        }
+        with open(output_path, 'w') as f:
+            json.dump(out, f)
 
-    cameras_txt = osp.join(txt_root, 'cameras.txt')
-    images_txt = osp.join(txt_root, 'images.txt')
+        return {
+            'output_path': output_path,
+            'num_cameras': len(frames),
+            'num_registered_images': int(num_registered),
+            'used_cache': False,
+            'fallback_used': False,
+            'colmap_work_dir': colmap_work_dir,
+        }
 
-    cameras = _parse_cameras_txt(cameras_txt)
-    frames = _parse_images_txt(images_txt, cameras)
+    except RuntimeError as colmap_error:
+        if not enable_sparse_fallback:
+            raise
 
-    out = {
-        'backend': 'colmap',
-        'image_folder': image_folder,
-        'frames': frames,
-    }
-    with open(output_path, 'w') as f:
-        json.dump(out, f)
+        frames, num_registered, seed_idx = _estimate_sparse_pairwise(
+            image_folder=image_folder,
+            min_inliers=sparse_min_inliers,
+            max_features=sparse_max_features)
 
-    return {
-        'output_path': output_path,
-        'num_cameras': len(frames),
-        'num_registered_images': int(num_registered),
-        'used_cache': False,
-        'colmap_work_dir': colmap_work_dir,
-    }
+        out = {
+            'backend': 'opencv_sparse_fallback',
+            'image_folder': image_folder,
+            'frames': frames,
+            'colmap_error': str(colmap_error),
+        }
+        with open(output_path, 'w') as f:
+            json.dump(out, f)
+
+        return {
+            'output_path': output_path,
+            'num_cameras': len(frames),
+            'num_registered_images': int(num_registered),
+            'used_cache': False,
+            'fallback_used': True,
+            'fallback_seed_index': int(seed_idx),
+            'colmap_work_dir': colmap_work_dir,
+            'colmap_error': str(colmap_error),
+        }

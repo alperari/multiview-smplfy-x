@@ -116,6 +116,18 @@ def parse_config(argv=None):
     parser.add_argument('--colmap_single_camera', default=True,
                         type=lambda x: x.lower() in ['true', '1'],
                         help='Use a single shared camera intrinsics model in COLMAP')
+    parser.add_argument('--enable_sparse_fallback', default=True,
+                        type=lambda x: x.lower() in ['true', '1'],
+                        help='Fallback to OpenCV pairwise camera estimation '
+                        'when COLMAP fails')
+    parser.add_argument('--sparse_min_inliers', default=20, type=int,
+                        help='Minimum inliers required for sparse fallback pairwise pose')
+    parser.add_argument('--sparse_max_features', default=8000, type=int,
+                        help='ORB max features used in sparse fallback')
+    parser.add_argument('--min_keypoint_mean_conf', default=0.0, type=float,
+                        help='Skip views with mean 2D keypoint confidence below this threshold')
+    parser.add_argument('--min_camera_confidence', default=0.0, type=float,
+                        help='Skip views with camera confidence below this threshold')
     parser.add_argument('--joints_to_ign', default=-1, type=int,
                         nargs='*',
                         help='Indices of joints to be ignored')

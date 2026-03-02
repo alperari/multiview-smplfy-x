@@ -27,6 +27,13 @@ def parse_args():
     parser.add_argument("--colmap_single_camera", default=True,
                         type=lambda x: x.lower() in ["true", "1"],
                         help="Use shared intrinsics across all images")
+    parser.add_argument("--enable_sparse_fallback", default=True,
+                        type=lambda x: x.lower() in ["true", "1"],
+                        help="Fallback to OpenCV pairwise estimation when COLMAP fails")
+    parser.add_argument("--sparse_min_inliers", type=int, default=20,
+                        help="Minimum inliers required for sparse fallback pairwise poses")
+    parser.add_argument("--sparse_max_features", type=int, default=8000,
+                        help="ORB max features used in sparse fallback")
     return parser.parse_args()
 
 
@@ -43,10 +50,14 @@ if __name__ == "__main__":
         colmap_matcher=args.colmap_matcher,
         colmap_camera_model=args.colmap_camera_model,
         colmap_single_camera=args.colmap_single_camera,
+        enable_sparse_fallback=args.enable_sparse_fallback,
+        sparse_min_inliers=args.sparse_min_inliers,
+        sparse_max_features=args.sparse_max_features,
     )
 
     print("Done.")
     print("Num cameras:", stats["num_cameras"])
     print("Num registered images:", stats.get("num_registered_images", "n/a"))
+    print("Fallback used:", stats.get("fallback_used", False))
     print("Used cache:", stats["used_cache"])
     print("Output path:", stats["output_path"])

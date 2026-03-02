@@ -106,7 +106,8 @@ def main(**args):
                 output_folder=keypoint_output_folder,
                 backend=args.get('keypoint_backend', 'mediapipe'),
                 overwrite=args.get('overwrite_keypoints', False),
-                min_detection_confidence=args.get('kp_min_detection_conf', 0.5),
+                min_detection_confidence=args.get(
+                    'kp_min_detection_conf', 0.5),
                 min_tracking_confidence=args.get('kp_min_tracking_conf', 0.5),
             )
             print('Keypoint extraction done: {}'.format(stats))
@@ -140,8 +141,13 @@ def main(**args):
                 colmap_binary=args.get('colmap_binary', 'colmap'),
                 colmap_work_dir=colmap_work_dir,
                 colmap_matcher=args.get('colmap_matcher', 'exhaustive'),
-                colmap_camera_model=args.get('colmap_camera_model', 'SIMPLE_PINHOLE'),
+                colmap_camera_model=args.get(
+                    'colmap_camera_model', 'SIMPLE_PINHOLE'),
                 colmap_single_camera=args.get('colmap_single_camera', True),
+                enable_sparse_fallback=args.get(
+                    'enable_sparse_fallback', True),
+                sparse_min_inliers=args.get('sparse_min_inliers', 20),
+                sparse_max_features=args.get('sparse_max_features', 8000),
             )
             print('Camera estimation done: {}'.format(cam_stats))
 

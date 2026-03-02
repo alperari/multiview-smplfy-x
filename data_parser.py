@@ -134,6 +134,7 @@ class OpenPose(Dataset):
     def __init__(self, data_folder, img_folder='color',
                  keyp_folder='keypoints',
                  cam_subpath='meta/cam_data.mat',
+                 cam_json_path='',
                  use_hands=False,
                  use_face=False,
                  dtype=torch.float32,
@@ -159,6 +160,16 @@ class OpenPose(Dataset):
         self.img_folder = osp.join(data_folder, img_folder)
         self.keyp_folder = osp.join(data_folder, keyp_folder)
         self.cam_fpath = osp.join(data_folder, cam_subpath)
+        self.cam_json_path = ''
+        self.cam_frames = None
+
+        if cam_json_path:
+            self.cam_json_path = osp.expandvars(cam_json_path)
+            if not osp.isabs(self.cam_json_path):
+                self.cam_json_path = osp.join(data_folder, self.cam_json_path)
+            with open(self.cam_json_path, 'r') as f:
+                cam_json = json.load(f)
+            self.cam_frames = cam_json.get('frames', {})
 
         self.img_paths = [osp.join(self.img_folder, img_fn)
                           for img_fn in os.listdir(self.img_folder)
@@ -229,22 +240,36 @@ class OpenPose(Dataset):
             if len(keyp_tuple.gender_pd) > 0:
                 output_dict['gender_pd'] = keyp_tuple.gender_pd
 
-        # read camera
-        cam_id = int(img_fn)
-        cam_data = sio.loadmat(self.cam_fpath)['cam'][0]
-        cam_param = cam_data[cam_id]
-        cam_R, cam_t = generate_cam_Rt(
-            center=cam_param['center'][0, 0], right=cam_param['right'][0, 0],
-            up=cam_param['up'][0, 0], direction=cam_param['direction'][0, 0])
-        cam_R = cam_R.astype(np.float32)
-        cam_t = cam_t.astype(np.float32)
-        output_dict['cam_id'] = cam_id
-        output_dict['cam_R'] = np.float32(cam_R)
-        output_dict['cam_t'] = np.float32(cam_t)
-        output_dict['cam_fx'] = 5000.0
-        output_dict['cam_fy'] = 5000.0
-        output_dict['cam_cx'] = img.shape[1] / 2
-        output_dict['cam_cy'] = img.shape[0] / 2
+        # read camera (json from Phase 4 or legacy mat)
+        if self.cam_frames is not None:
+            cam_entry = self.cam_frames.get(img_fn, None)
+            if cam_entry is None:
+                return {}
+            output_dict['cam_id'] = int(cam_entry.get('image_id', -1))
+            output_dict['cam_R'] = np.asarray(cam_entry['cam_R'], dtype=np.float32)
+            output_dict['cam_t'] = np.asarray(cam_entry['cam_t'], dtype=np.float32)
+            output_dict['cam_fx'] = float(cam_entry.get('cam_fx', 5000.0))
+            output_dict['cam_fy'] = float(cam_entry.get('cam_fy', 5000.0))
+            output_dict['cam_cx'] = float(cam_entry.get('cam_cx', img.shape[1] / 2))
+            output_dict['cam_cy'] = float(cam_entry.get('cam_cy', img.shape[0] / 2))
+            output_dict['cam_confidence'] = float(cam_entry.get('cam_confidence', 1.0))
+        else:
+            cam_id = int(img_fn)
+            cam_data = sio.loadmat(self.cam_fpath)['cam'][0]
+            cam_param = cam_data[cam_id]
+            cam_R, cam_t = generate_cam_Rt(
+                center=cam_param['center'][0, 0], right=cam_param['right'][0, 0],
+                up=cam_param['up'][0, 0], direction=cam_param['direction'][0, 0])
+            cam_R = cam_R.astype(np.float32)
+            cam_t = cam_t.astype(np.float32)
+            output_dict['cam_id'] = cam_id
+            output_dict['cam_R'] = np.float32(cam_R)
+            output_dict['cam_t'] = np.float32(cam_t)
+            output_dict['cam_fx'] = 5000.0
+            output_dict['cam_fy'] = 5000.0
+            output_dict['cam_cx'] = img.shape[1] / 2
+            output_dict['cam_cy'] = img.shape[0] / 2
+            output_dict['cam_confidence'] = 1.0
 
         return output_dict
 

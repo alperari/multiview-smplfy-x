@@ -202,7 +202,7 @@ def fit_single_frame(img_list,
     gt_joints_list = list()
     joints_conf_list = list()
 
-    assert(view_num > 0)
+    assert (view_num > 0)
     for view_id in range(view_num):
         keypoint_data = torch.tensor(keypoints_list[view_id], dtype=dtype)
         gt_joints = keypoint_data[:, :, :2]
@@ -221,7 +221,8 @@ def fit_single_frame(img_list,
         pen_distance = None
         filter_faces = None
         if interpenetration:
-            raise NotImplementedError('The interpenetration constraint was removed!')
+            raise NotImplementedError(
+                'The interpenetration constraint was removed!')
 
         fct = view_num
 
@@ -426,9 +427,9 @@ def fit_single_frame(img_list,
             result.update({key: val.detach().cpu().numpy()
                            for key, val in body_model.named_parameters()})
             result.update({'global_body_translation':
-                                global_body_translation.detach().cpu().numpy()})
+                           global_body_translation.detach().cpu().numpy()})
             result.update({'body_scale':
-                               body_scale.detach().cpu().numpy()})
+                           body_scale.detach().cpu().numpy()})
             if use_vposer:
                 body_pose = vposer.decode(
                     pose_embedding,
@@ -448,13 +449,15 @@ def fit_single_frame(img_list,
             if result['body_pose'].shape[-1] == 69:
                 body_pose = result['body_pose']
                 body_pose = np.reshape(body_pose, (1, 69))
-                body_pose = np.concatenate([result['global_orient'], body_pose], axis=1)
+                body_pose = np.concatenate(
+                    [result['global_orient'], body_pose], axis=1)
                 result.update({'body_pose': body_pose})
 
             assert result['body_pose'].shape[-1] == 72
             results.append({'loss': final_loss_val,
                             'result': result})
-            print('body_scale = %f' % body_scale.detach().cpu().numpy().squeeze())
+            print('body_scale = %f' %
+                  body_scale.detach().cpu().numpy().squeeze())
 
         with open(result_fn, 'wb') as result_file:
             if len(results) > 1:
@@ -465,7 +468,10 @@ def fit_single_frame(img_list,
             pickle.dump(results[min_idx]['result'], result_file, protocol=2)
 
     if save_meshes or visualize:
-        model_output = body_model(return_verts=True, body_pose=torch.from_numpy(result['body_pose'][:, 3:]).cuda())
+        body_pose_tensor = torch.from_numpy(result['body_pose'][:, 3:]).to(
+            device=device, dtype=dtype)
+        model_output = body_model(
+            return_verts=True, body_pose=body_pose_tensor)
         vertices = model_output.vertices.detach().cpu().numpy().squeeze()
 
         # test projection
@@ -485,17 +491,21 @@ def fit_single_frame(img_list,
             vertices_proj = vertices * body_scale + global_trans
             vertices_proj = np.dot(vertices_proj, cam_rotation.transpose())
             vertices_proj += np.expand_dims(cam_trans, axis=0)
-            vertices_proj[:, 0] = vertices_proj[:, 0] * cam_fx / vertices_proj[:, 2] + cam_c[0]
-            vertices_proj[:, 1] = vertices_proj[:, 1] * cam_fy / vertices_proj[:, 2] + cam_c[1]
+            vertices_proj[:, 0] = vertices_proj[:, 0] * \
+                cam_fx / vertices_proj[:, 2] + cam_c[0]
+            vertices_proj[:, 1] = vertices_proj[:, 1] * \
+                cam_fy / vertices_proj[:, 2] + cam_c[1]
             img_proj = np.copy(img)
             for v in vertices_proj:
                 v = np.int32(np.round(v))
                 v[0] = np.clip(v[0], 0, img_proj.shape[1]-1)
                 v[1] = np.clip(v[1], 0, img_proj.shape[0]-1)
-                img_proj[v[1], v[0], :] = np.asarray([0, 0, 1], dtype=np.float32)
+                img_proj[v[1], v[0], :] = np.asarray(
+                    [0, 0, 1], dtype=np.float32)
             img_proj = np.uint8(img_proj*255)
             cv2.imwrite(osp.join(out_img_fd, '%04d.png' % i), img_proj)
 
         import trimesh
-        out_mesh = trimesh.Trimesh(vertices * body_scale + global_trans, body_model.faces)
+        out_mesh = trimesh.Trimesh(
+            vertices * body_scale + global_trans, body_model.faces)
         out_mesh.export(mesh_fn)

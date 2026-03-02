@@ -89,20 +89,31 @@ def main(**args):
 
     input_mode = args.get('input_mode', 'openpose').lower()
     if input_mode == 'raw_images':
-        if args.get('auto_extract_keypoints', True):
-            keypoint_output_folder = args.get('keypoint_output_folder', '')
-            if keypoint_output_folder:
-                keypoint_output_folder = osp.expandvars(keypoint_output_folder)
-                if not osp.isabs(keypoint_output_folder):
-                    keypoint_output_folder = osp.join(args.get('data_folder', '.'),
-                                                      keypoint_output_folder)
-            else:
+        raw_img_folder = dataset_obj.img_folder
+        keypoint_output_folder = args.get('keypoint_output_folder', '')
+        if keypoint_output_folder:
+            keypoint_output_folder = osp.expandvars(keypoint_output_folder)
+            if not osp.isabs(keypoint_output_folder):
                 keypoint_output_folder = osp.join(args.get('data_folder', '.'),
-                                                  args.get('keyp_folder', 'keypoints'))
+                                                  keypoint_output_folder)
+        else:
+            keypoint_output_folder = osp.join(args.get('data_folder', '.'),
+                                              args.get('keyp_folder', 'keypoints'))
 
+        camera_output_path = args.get('camera_output_path', '')
+        if camera_output_path:
+            camera_output_path = osp.expandvars(camera_output_path)
+            if not osp.isabs(camera_output_path):
+                camera_output_path = osp.join(args.get('data_folder', '.'),
+                                              camera_output_path)
+        else:
+            camera_output_path = osp.join(args.get('data_folder', '.'),
+                                          'meta', 'cam_params.json')
+
+        if args.get('auto_extract_keypoints', True):
             print('Running automatic keypoint extraction...')
             stats = extract_keypoints_from_folder(
-                image_folder=dataset_obj.img_folder,
+                image_folder=raw_img_folder,
                 output_folder=keypoint_output_folder,
                 backend=args.get('keypoint_backend', 'mediapipe'),
                 overwrite=args.get('overwrite_keypoints', False),
@@ -113,16 +124,6 @@ def main(**args):
             print('Keypoint extraction done: {}'.format(stats))
 
         if args.get('auto_estimate_cameras', True):
-            camera_output_path = args.get('camera_output_path', '')
-            if camera_output_path:
-                camera_output_path = osp.expandvars(camera_output_path)
-                if not osp.isabs(camera_output_path):
-                    camera_output_path = osp.join(args.get('data_folder', '.'),
-                                                  camera_output_path)
-            else:
-                camera_output_path = osp.join(args.get('data_folder', '.'),
-                                              'meta', 'cam_params.json')
-
             colmap_work_dir = args.get('colmap_work_dir', '')
             if colmap_work_dir:
                 colmap_work_dir = osp.expandvars(colmap_work_dir)
@@ -134,7 +135,7 @@ def main(**args):
 
             print('Running automatic camera estimation...')
             cam_stats = estimate_cameras_from_folder(
-                image_folder=dataset_obj.img_folder,
+                image_folder=raw_img_folder,
                 output_path=camera_output_path,
                 backend=args.get('camera_backend', 'colmap'),
                 overwrite=args.get('overwrite_cameras', False),
@@ -151,10 +152,17 @@ def main(**args):
             )
             print('Camera estimation done: {}'.format(cam_stats))
 
-        raise NotImplementedError(
-            'input_mode=raw_images now supports automatic keypoint extraction '
-            'and camera estimation (Phase 4). '
-            'Fitting integration for these generated files is next (Phase 5).')
+        phase5_dataset_args = args.copy()
+        phase5_dataset_args['dataset'] = args.get('dataset', 'openpose')
+        phase5_dataset_args['data_folder'] = args.get('data_folder', '.')
+        phase5_dataset_args['input_mode'] = 'openpose'
+        phase5_dataset_args['img_folder'] = raw_img_folder
+        phase5_dataset_args['keyp_folder'] = keypoint_output_folder
+        phase5_dataset_args['cam_json_path'] = camera_output_path
+
+        dataset_obj = create_dataset(**phase5_dataset_args)
+
+        print('Phase 5 dataset ready from generated keypoints/cameras.')
 
     start = time.time()
 
@@ -265,15 +273,37 @@ def main(**args):
     keypoints_list = list()
     camera_list = list()
     view_num = len(dataset_obj)
-    view_interval = int(round(view_num / 20.0))
+    view_interval = max(1, int(round(view_num / 20.0)))
+    min_kp_mean_conf = float(args.get('min_keypoint_mean_conf', 0.0))
+    min_cam_conf = float(args.get('min_camera_confidence', 0.0))
+
+    skipped_empty = 0
+    skipped_kp = 0
+    skipped_cam = 0
 
     for idx, data in enumerate(dataset_obj):
         if idx % view_interval != 0:
             continue
 
+        if (not data) or ('keypoints' not in data) or ('cam_R' not in data):
+            skipped_empty += 1
+            continue
+
         img = data['img']
         fn = data['fn']
         keypoints = data['keypoints'][[0]]
+
+        if min_kp_mean_conf > 0:
+            kp_mean_conf = float(np.mean(keypoints[0, :, 2]))
+            if kp_mean_conf < min_kp_mean_conf:
+                skipped_kp += 1
+                continue
+
+        cam_conf = float(data.get('cam_confidence', 1.0))
+        if cam_conf < min_cam_conf:
+            skipped_cam += 1
+            continue
+
         # Create the camera object
         focal_length = args.get('focal_length')
         camera = create_camera(focal_length_x=focal_length,
@@ -306,6 +336,14 @@ def main(**args):
         camera_list.append(camera)
 
         print('Processing: {}'.format(data['img_path']))
+
+    if len(img_list) == 0:
+        raise RuntimeError(
+            'No valid views after filtering. '
+            'Try lowering --min_keypoint_mean_conf / --min_camera_confidence.')
+
+    print('Selected {} views (skipped empty={}, low_kp={}, low_cam={})'.format(
+        len(img_list), skipped_empty, skipped_kp, skipped_cam))
 
     curr_result_fn = osp.join(output_folder, 'smpl_param.pkl')
     curr_mesh_fn = osp.join(output_folder, 'smpl_mesh.obj')

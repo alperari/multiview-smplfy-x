@@ -246,19 +246,25 @@ class OpenPose(Dataset):
             if cam_entry is None:
                 return {}
             output_dict['cam_id'] = int(cam_entry.get('image_id', -1))
-            output_dict['cam_R'] = np.asarray(cam_entry['cam_R'], dtype=np.float32)
-            output_dict['cam_t'] = np.asarray(cam_entry['cam_t'], dtype=np.float32)
+            output_dict['cam_R'] = np.asarray(
+                cam_entry['cam_R'], dtype=np.float32)
+            output_dict['cam_t'] = np.asarray(
+                cam_entry['cam_t'], dtype=np.float32)
             output_dict['cam_fx'] = float(cam_entry.get('cam_fx', 5000.0))
             output_dict['cam_fy'] = float(cam_entry.get('cam_fy', 5000.0))
-            output_dict['cam_cx'] = float(cam_entry.get('cam_cx', img.shape[1] / 2))
-            output_dict['cam_cy'] = float(cam_entry.get('cam_cy', img.shape[0] / 2))
-            output_dict['cam_confidence'] = float(cam_entry.get('cam_confidence', 1.0))
+            output_dict['cam_cx'] = float(
+                cam_entry.get('cam_cx', img.shape[1] / 2))
+            output_dict['cam_cy'] = float(
+                cam_entry.get('cam_cy', img.shape[0] / 2))
+            output_dict['cam_confidence'] = float(
+                cam_entry.get('cam_confidence', 1.0))
         else:
             cam_id = int(img_fn)
             cam_data = sio.loadmat(self.cam_fpath)['cam'][0]
             cam_param = cam_data[cam_id]
             cam_R, cam_t = generate_cam_Rt(
-                center=cam_param['center'][0, 0], right=cam_param['right'][0, 0],
+                center=cam_param['center'][0,
+                                           0], right=cam_param['right'][0, 0],
                 up=cam_param['up'][0, 0], direction=cam_param['direction'][0, 0])
             cam_R = cam_R.astype(np.float32)
             cam_t = cam_t.astype(np.float32)

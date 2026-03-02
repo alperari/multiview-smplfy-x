@@ -11,6 +11,21 @@ python main.py \
     --output_folder dataset_example/image_data/dennis_test_batch/inference_output
 
 
+python main.py\
+    --config cfg_files/fit_smpl.yaml \
+    --input_mode raw_images \
+    --raw_images_dir dataset_example/image_data/mpi/S1/scene_1/raw_images \
+    --keypoint_output_folder dataset_example/image_data/mpi/S1/scene_1/keypoints \
+    --camera_output_path dataset_example/image_data/mpi/S1/scene_1/camera.json \
+    --auto_extract_keypoints false \
+    --auto_estimate_cameras false \
+    --min_keypoint_mean_conf 0.02 \
+    --min_camera_confidence 0.0 \
+    --use_cuda false \
+    --data_folder . \
+    --output_folder dataset_example/image_data/mpi/S1/scene_1/out
+
+
 ######### ESTIMATE KEYPOINTS FROM RAW IMAGES
 python generate_keypoints.py \
     --image_folder dataset_example/image_data/mpi/S1/scene_1/raw_images \

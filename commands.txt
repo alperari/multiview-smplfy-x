@@ -47,3 +47,7 @@ python visualize_keypoints.py \
     --output_folder dataset_example/image_data/dennis_test_batch/keypoint_overlays_gt
 
 
+python generate_cameras.py \
+    --image_folder dataset_example/image_data/mpi/S1/scene_1/raw_images \
+    --output_path dataset_example/image_data/mpi/S1/scene_1/camera.json \
+    --overwrite

@@ -90,6 +90,32 @@ def parse_config(argv=None):
                         help='Minimum detector confidence used by keypoint backend')
     parser.add_argument('--kp_min_tracking_conf', default=0.5, type=float,
                         help='Minimum tracking confidence used by keypoint backend')
+    parser.add_argument('--auto_estimate_cameras', default=True,
+                        type=lambda x: x.lower() in ['true', '1'],
+                        help='When input_mode=raw_images, automatically estimate '
+                        'camera parameters from images')
+    parser.add_argument('--camera_backend', default='colmap', type=str,
+                        choices=['colmap'],
+                        help='Backend used for automatic camera estimation')
+    parser.add_argument('--camera_output_path', default='', type=str,
+                        help='Output camera parameter file path. If empty, '
+                        'defaults to data_folder/meta/cam_params.json')
+    parser.add_argument('--overwrite_cameras', default=False,
+                        type=lambda x: x.lower() in ['true', '1'],
+                        help='Overwrite existing camera parameter output file')
+    parser.add_argument('--colmap_binary', default='colmap', type=str,
+                        help='COLMAP executable path or command name')
+    parser.add_argument('--colmap_work_dir', default='', type=str,
+                        help='Working directory for COLMAP intermediate outputs. '
+                        'If empty, defaults to output_folder/colmap')
+    parser.add_argument('--colmap_matcher', default='exhaustive', type=str,
+                        choices=['exhaustive', 'sequential'],
+                        help='COLMAP matcher type')
+    parser.add_argument('--colmap_camera_model', default='SIMPLE_PINHOLE', type=str,
+                        help='COLMAP camera model for feature extraction')
+    parser.add_argument('--colmap_single_camera', default=True,
+                        type=lambda x: x.lower() in ['true', '1'],
+                        help='Use a single shared camera intrinsics model in COLMAP')
     parser.add_argument('--joints_to_ign', default=-1, type=int,
                         nargs='*',
                         help='Indices of joints to be ignored')

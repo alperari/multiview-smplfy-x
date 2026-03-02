@@ -37,6 +37,7 @@ from cmd_parser import parse_config
 from data_parser import create_dataset
 from fit_single_frame import fit_single_frame
 from keypoint_extractor import extract_keypoints_from_folder
+from camera_estimator import estimate_cameras_from_folder
 
 from camera import create_camera
 from prior import create_prior
@@ -110,10 +111,44 @@ def main(**args):
             )
             print('Keypoint extraction done: {}'.format(stats))
 
+        if args.get('auto_estimate_cameras', True):
+            camera_output_path = args.get('camera_output_path', '')
+            if camera_output_path:
+                camera_output_path = osp.expandvars(camera_output_path)
+                if not osp.isabs(camera_output_path):
+                    camera_output_path = osp.join(args.get('data_folder', '.'),
+                                                  camera_output_path)
+            else:
+                camera_output_path = osp.join(args.get('data_folder', '.'),
+                                              'meta', 'cam_params.json')
+
+            colmap_work_dir = args.get('colmap_work_dir', '')
+            if colmap_work_dir:
+                colmap_work_dir = osp.expandvars(colmap_work_dir)
+                if not osp.isabs(colmap_work_dir):
+                    colmap_work_dir = osp.join(args.get('data_folder', '.'),
+                                               colmap_work_dir)
+            else:
+                colmap_work_dir = osp.join(output_folder, 'colmap')
+
+            print('Running automatic camera estimation...')
+            cam_stats = estimate_cameras_from_folder(
+                image_folder=dataset_obj.img_folder,
+                output_path=camera_output_path,
+                backend=args.get('camera_backend', 'colmap'),
+                overwrite=args.get('overwrite_cameras', False),
+                colmap_binary=args.get('colmap_binary', 'colmap'),
+                colmap_work_dir=colmap_work_dir,
+                colmap_matcher=args.get('colmap_matcher', 'exhaustive'),
+                colmap_camera_model=args.get('colmap_camera_model', 'SIMPLE_PINHOLE'),
+                colmap_single_camera=args.get('colmap_single_camera', True),
+            )
+            print('Camera estimation done: {}'.format(cam_stats))
+
         raise NotImplementedError(
             'input_mode=raw_images now supports automatic keypoint extraction '
-            '(Phase 3), but camera estimation is still required before fitting. '
-            'Please run camera estimation next (Phase 4).')
+            'and camera estimation (Phase 4). '
+            'Fitting integration for these generated files is next (Phase 5).')
 
     start = time.time()
 

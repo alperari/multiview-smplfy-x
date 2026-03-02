@@ -1,0 +1,49 @@
+######### RUN INFERENCE WITH RAW IMAGES
+
+python main.py \
+    --config cfg_files/fit_smpl.yaml \
+    --input_mode raw_images \
+    --raw_images_dir dataset_example/image_data/dennis_test_batch/raw_images \
+    --keypoint_output_folder dataset_example/image_data/dennis_test_batch/keypoints \
+    --overwrite_keypoints true \
+    --use_cuda false \
+    --data_folder . \
+    --output_folder dataset_example/image_data/dennis_test_batch/inference_output
+
+
+######### ESTIMATE KEYPOINTS FROM RAW IMAGES
+python generate_keypoints.py \
+    --image_folder dataset_example/image_data/mpi/S1/scene_1/raw_images \
+    --output_folder dataset_example/image_data/mpi/S1/scene_1/keypoints
+
+
+######### Visualize keypoints on images under a folder
+
+python visualize_keypoints.py \
+    --keypoint_folder dataset_example/image_data/dennis_test_batch/keypoints \
+    --image_folder dataset_example/image_data/dennis_test_batch/raw_images \
+    --output_folder dataset_example/image_data/dennis_test_batch/keypoint_overlays
+
+
+python visualize_keypoints.py \
+    --keypoint_folder dataset_example/image_data/mpi/S1/scene_1/keypoints \
+    --image_folder dataset_example/image_data/mpi/S1/scene_1/raw_images \
+    --output_folder dataset_example/image_data/mpi/S1/scene_1/keypoint_overlays
+
+
+python visualize_keypoints.py \
+    --keypoint_folder dataset_example/image_data/mpi/S1/scene_2/keypoints \
+    --image_folder dataset_example/image_data/mpi/S1/scene_2/raw_images \
+    --output_folder dataset_example/image_data/mpi/S1/scene_2/keypoint_overlays
+
+
+
+
+######### Visualize GT keypoints on images under a folder
+
+python visualize_keypoints.py \
+    --keypoint_folder dataset_example/image_data/dennis_test_batch/keypoints_gt \
+    --image_folder dataset_example/image_data/dennis_test_batch/raw_images \
+    --output_folder dataset_example/image_data/dennis_test_batch/keypoint_overlays_gt
+
+

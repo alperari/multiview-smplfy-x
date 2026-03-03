@@ -1,5 +1,20 @@
 ######### RUN INFERENCE WITH RAW IMAGES
 
+### DENNIS GT SMPL
+python main.py \
+    --config cfg_files/fit_smpl.yaml \
+    --data_folder ./dataset_example/image_data/rp_dennis_posed_004 \
+    --output_folder ./dataset_example/mesh_data/rp_dennis_posed_004/smpl
+
+
+### DENNIS GT SMPLX
+python main.py \
+    --config cfg_files/fit_smplx.yaml \
+    --data_folder ./dataset_example/image_data/rp_dennis_posed_004 \
+    --output_folder ./dataset_example/mesh_data/rp_dennis_posed_004/smplx
+
+
+
 python main.py \
     --config cfg_files/fit_smpl.yaml \
     --input_mode raw_images \
@@ -17,11 +32,11 @@ python main.py\
     --raw_images_dir dataset_example/image_data/mpi/S1/scene_1/raw_images \
     --keypoint_output_folder dataset_example/image_data/mpi/S1/scene_1/keypoints \
     --camera_output_path dataset_example/image_data/mpi/S1/scene_1/camera.json \
-    --auto_extract_keypoints false \
-    --auto_estimate_cameras false \
+    --auto_extract_keypoints true \
+    --auto_estimate_cameras true \
     --min_keypoint_mean_conf 0.02 \
     --min_camera_confidence 0.0 \
-    --use_cuda false \
+    --use_cuda true \
     --data_folder . \
     --output_folder dataset_example/image_data/mpi/S1/scene_1/out
 

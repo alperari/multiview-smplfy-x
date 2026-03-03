@@ -243,7 +243,14 @@ def fit_single_frame(img_list,
             for i in range(len(opt_weights_dict['expr_prior_weight'])):
                 opt_weights_dict['expr_prior_weight'][i] *= (view_num / fct)
             for i in range(len(opt_weights_dict['jaw_prior_weight'])):
-                opt_weights_dict['jaw_prior_weight'][i] *= (view_num / fct)
+                if isinstance(opt_weights_dict['jaw_prior_weight'][i],
+                              (list, tuple, np.ndarray)):
+                    opt_weights_dict['jaw_prior_weight'][i] = [
+                        float(val) * (view_num / fct)
+                        for val in opt_weights_dict['jaw_prior_weight'][i]
+                    ]
+                else:
+                    opt_weights_dict['jaw_prior_weight'][i] *= (view_num / fct)
 
         if use_hands:
             opt_weights_dict['hand_weight'] = hand_joints_weights
@@ -446,14 +453,25 @@ def fit_single_frame(img_list,
                 result['body_pose'] = body_pose.detach().cpu().numpy()
                 result['body_pose_embedding'] = pose_embedding.detach().cpu().numpy()
 
-            if result['body_pose'].shape[-1] == 69:
+            model_type = kwargs.get('model_type', 'smpl').lower()
+            body_pose_dim = result['body_pose'].shape[-1]
+            if model_type == 'smpl' and body_pose_dim == 69:
                 body_pose = result['body_pose']
                 body_pose = np.reshape(body_pose, (1, 69))
                 body_pose = np.concatenate(
                     [result['global_orient'], body_pose], axis=1)
                 result.update({'body_pose': body_pose})
+                body_pose_dim = result['body_pose'].shape[-1]
 
-            assert result['body_pose'].shape[-1] == 72
+            valid_pose_dims = {
+                'smpl': (72,),
+                'smplh': (63, 69),
+                'smplx': (63,),
+            }
+            allowed_dims = valid_pose_dims.get(model_type, (body_pose_dim,))
+            assert body_pose_dim in allowed_dims, (
+                'Unexpected body_pose dim {} for model_type {} (expected one of {})'.format(
+                    body_pose_dim, model_type, allowed_dims))
             results.append({'loss': final_loss_val,
                             'result': result})
             print('body_scale = %f' %
@@ -468,10 +486,20 @@ def fit_single_frame(img_list,
             pickle.dump(results[min_idx]['result'], result_file, protocol=2)
 
     if save_meshes or visualize:
-        body_pose_tensor = torch.from_numpy(result['body_pose'][:, 3:]).to(
+        model_type = kwargs.get('model_type', 'smpl').lower()
+        if model_type == 'smpl' and result['body_pose'].shape[-1] == 72:
+            body_pose_np = result['body_pose'][:, 3:]
+        else:
+            body_pose_np = result['body_pose']
+
+        body_pose_tensor = torch.from_numpy(body_pose_np).to(
+            device=device, dtype=dtype)
+        global_orient_tensor = torch.from_numpy(result['global_orient']).to(
             device=device, dtype=dtype)
         model_output = body_model(
-            return_verts=True, body_pose=body_pose_tensor)
+            return_verts=True,
+            body_pose=body_pose_tensor,
+            global_orient=global_orient_tensor)
         vertices = model_output.vertices.detach().cpu().numpy().squeeze()
 
         # test projection

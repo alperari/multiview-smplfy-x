@@ -21,6 +21,7 @@ from __future__ import division
 
 import os
 import os.path as osp
+import warnings
 
 try:
     import cPickle as pickle
@@ -913,6 +914,24 @@ class SMPLX(SMPLH):
         shape_components = torch.cat(
             [betas.expand(int(batch_size / betas.shape[0]), -1), expression],
             dim=-1)
+
+        num_shape_coeffs = self.shapedirs.shape[-1]
+        if shape_components.shape[-1] > num_shape_coeffs:
+            warnings.warn(
+                'SMPL-X shape components ({}) exceed shapedirs ({}) - '
+                'truncating extra coefficients.'.format(
+                    shape_components.shape[-1], num_shape_coeffs))
+            shape_components = shape_components[:, :num_shape_coeffs]
+        elif shape_components.shape[-1] < num_shape_coeffs:
+            warnings.warn(
+                'SMPL-X shape components ({}) are fewer than shapedirs ({}) - '
+                'padding missing coefficients with zeros.'.format(
+                    shape_components.shape[-1], num_shape_coeffs))
+            pad = torch.zeros([batch_size,
+                               num_shape_coeffs - shape_components.shape[-1]],
+                              dtype=shape_components.dtype,
+                              device=shape_components.device)
+            shape_components = torch.cat([shape_components, pad], dim=-1)
 
         vertices, joints = lbs(shape_components, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,

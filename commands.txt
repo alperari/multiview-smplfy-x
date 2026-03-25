@@ -14,16 +14,12 @@ python main.py \
     --output_folder ./dataset_example/mesh_data/rp_dennis_posed_004/smplx
 
 
-
+### INFERENCE
 python main.py \
     --config cfg_files/fit_smpl.yaml \
-    --input_mode raw_images \
-    --raw_images_dir dataset_example/image_data/dennis_test_batch/raw_images \
-    --keypoint_output_folder dataset_example/image_data/dennis_test_batch/keypoints \
-    --overwrite_keypoints true \
     --use_cuda false \
-    --data_folder . \
-    --output_folder dataset_example/image_data/dennis_test_batch/inference_output
+    --data_folder dataset_example/image_data/steve_lab_2_view_no_cloth
+    --output_folder dataset_example/image_data/steve_lab_2_view_no_cloth/inference_output
 
 
 python main.py\
@@ -43,16 +39,16 @@ python main.py\
 
 ######### ESTIMATE KEYPOINTS FROM RAW IMAGES
 python generate_keypoints.py \
-    --image_folder dataset_example/image_data/mpi/S1/scene_1/raw_images \
-    --output_folder dataset_example/image_data/mpi/S1/scene_1/keypoints
+    --image_folder dataset_example/image_data/steve_lab_2_view_no_cloth/raw_images \
+    --output_folder dataset_example/image_data/steve_lab_2_view_no_cloth/keypoints
 
 
 ######### Visualize keypoints on images under a folder
 
 python visualize_keypoints.py \
-    --keypoint_folder dataset_example/image_data/dennis_test_batch/keypoints \
-    --image_folder dataset_example/image_data/dennis_test_batch/raw_images \
-    --output_folder dataset_example/image_data/dennis_test_batch/keypoint_overlays
+    --keypoint_folder dataset_example/image_data/steve_lab_2_view_no_cloth/keypoints \
+    --image_folder dataset_example/image_data/steve_lab_2_view_no_cloth/raw_images \
+    --output_folder dataset_example/image_data/steve_lab_2_view_no_cloth/keypoint_overlays
 
 
 python visualize_keypoints.py \
